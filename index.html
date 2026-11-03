@@ -1,0 +1,1488 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AutoControl Pro - Gestão Veicular</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Leaflet CSS & JS (Mapa Interativo OpenStreetMap) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Chart.js para Gráficos Financeiros -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        /* Ajuste de mapa no container */
+        #map {
+            height: calc(100vh - 140px);
+            width: 100%;
+            z-index: 1;
+        }
+        /* Ocultar barra de rolagem mas permitir scroll */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 flex flex-col h-screen overflow-hidden">
+
+    <!-- CABEÇALHO DA APLICAÇÃO -->
+    <header class="bg-gray-800 border-b border-gray-700 px-4 py-3 flex justify-between items-center z-10 shadow-md shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="bg-indigo-600 p-2 rounded-xl text-white">
+                <i class="fa-solid fa-car-side text-xl"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-lg leading-tight tracking-wide text-white">AutoControl <span class="text-indigo-400 font-normal text-xs bg-indigo-900/60 border border-indigo-500/30 px-2 py-0.5 rounded-full ml-1">PRO</span></h1>
+                <p id="header-car-info" class="text-xs text-gray-400">Nenhum veículo selecionado</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-2">
+            <button onclick="toggleModal('vehicle-modal')" class="p-2 text-gray-300 hover:text-white bg-gray-700 hover:bg-gray-600 rounded-lg text-sm flex items-center gap-1 transition">
+                <i class="fa-solid fa-sliders"></i>
+                <span class="hidden sm:inline text-xs">Garagem</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- CONTEÚDO PRINCIPAL COM NAVEGAÇÃO DE ABAS -->
+    <main class="flex-1 overflow-y-auto relative no-scrollbar pb-20">
+
+        <!-- 1. DASHBOARD / RESUMO -->
+        <section id="tab-dashboard" class="tab-content p-4 space-y-4">
+            <!-- CARD DO VEÍCULO ATUAL -->
+            <div class="bg-gradient-to-r from-gray-800 to-indigo-950 p-4 rounded-2xl border border-gray-700 shadow-lg relative overflow-hidden">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <span id="dash-car-plate" class="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-xs px-2 py-1 rounded font-mono font-bold tracking-widest uppercase">--- 0000</span>
+                        <h2 id="dash-car-name" class="text-xl font-bold text-white mt-1">Cadastre seu Veículo</h2>
+                        <p id="dash-car-detail" class="text-xs text-gray-400">---</p>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-xs text-gray-400">Odômetro Atual</span>
+                        <p class="text-lg font-bold text-indigo-400 font-mono"><span id="dash-car-km">0</span> <span class="text-xs text-gray-400">km</span></p>
+                    </div>
+                </div>
+
+                <!-- Métricas Rápidas -->
+                <div class="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-gray-700/60 text-center">
+                    <div class="bg-gray-800/60 p-2 rounded-xl">
+                        <span id="dash-period-cost-label" class="text-[10px] text-gray-400 block uppercase">Gasto no Período</span>
+                        <span id="dash-month-cost" class="text-xs sm:text-sm font-bold text-emerald-400">R$ 0,00</span>
+                    </div>
+                    <div class="bg-gray-800/60 p-2 rounded-xl">
+                        <span class="text-[10px] text-gray-400 block uppercase">Consumo Médio</span>
+                        <span id="dash-avg-consumption" class="text-xs sm:text-sm font-bold text-indigo-300">0.0 km/L</span>
+                    </div>
+                    <div class="bg-gray-800/60 p-2 rounded-xl">
+                        <span class="text-[10px] text-gray-400 block uppercase">Custo / KM</span>
+                        <span id="dash-cost-per-km" class="text-xs sm:text-sm font-bold text-yellow-400">R$ 0,00</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- FILTRO DE PERÍODO DO PAINEL -->
+            <div class="bg-gray-800 p-3 rounded-2xl border border-gray-700 shadow-md">
+                <div class="flex items-center justify-between gap-2 mb-2">
+                    <span class="text-xs font-semibold text-gray-300"><i class="fa-solid fa-calendar-days text-indigo-400 mr-2"></i>Período de análise</span>
+                    <span id="dashboard-period-label" class="text-[10px] text-indigo-300 text-right"></span>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <select id="dashboard-year-filter" onchange="applyPeriodFilter('dashboard')" aria-label="Selecionar ano" class="period-filter w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"></select>
+                    <select id="dashboard-month-filter" onchange="applyPeriodFilter('dashboard')" aria-label="Selecionar mês" class="period-filter w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"></select>
+                </div>
+            </div>
+
+            <!-- BOTÕES DE AÇÃO RÁPIDA -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <button onclick="openExpenseModal('Abastecimento')" class="bg-gray-800 hover:bg-gray-750 border border-gray-700 p-3 rounded-xl flex items-center space-x-3 transition">
+                    <div class="bg-emerald-500/20 text-emerald-400 p-2.5 rounded-lg"><i class="fa-solid fa-gas-pump"></i></div>
+                    <div class="text-left"><p class="text-xs font-semibold text-gray-200">Abastecer</p><p class="text-[10px] text-gray-400">Novo consumo</p></div>
+                </button>
+                <button onclick="openExpenseModal('Manutenção')" class="bg-gray-800 hover:bg-gray-750 border border-gray-700 p-3 rounded-xl flex items-center space-x-3 transition">
+                    <div class="bg-amber-500/20 text-amber-400 p-2.5 rounded-lg"><i class="fa-solid fa-wrench"></i></div>
+                    <div class="text-left"><p class="text-xs font-semibold text-gray-200">Manutenção</p><p class="text-[10px] text-gray-400">Oficina / Peças</p></div>
+                </button>
+                <button onclick="toggleModal('gps-tracking-modal')" class="bg-gray-800 hover:bg-gray-750 border border-gray-700 p-3 rounded-xl flex items-center space-x-3 transition">
+                    <div class="bg-indigo-500/20 text-indigo-400 p-2.5 rounded-lg"><i class="fa-solid fa-route"></i></div>
+                    <div class="text-left"><p class="text-xs font-semibold text-gray-200">GPS Track</p><p class="text-[10px] text-gray-400">Gravar Rota</p></div>
+                </button>
+                <button onclick="switchTab('tab-maintenance')" class="bg-gray-800 hover:bg-gray-750 border border-gray-700 p-3 rounded-xl flex items-center space-x-3 transition">
+                    <div class="bg-rose-500/20 text-rose-400 p-2.5 rounded-lg"><i class="fa-solid fa-shield-halved"></i></div>
+                    <div class="text-left"><p class="text-xs font-semibold text-gray-200">Alertas</p><p class="text-[10px] text-gray-400">Revisões pendentes</p></div>
+                </button>
+            </div>
+
+            <!-- GRÁFICO DE GASTOS -->
+            <div class="bg-gray-800 p-4 rounded-2xl border border-gray-700 shadow-md">
+                <h3 class="text-sm font-semibold text-gray-300 mb-3 flex items-center justify-between">
+                    <span><i class="fa-solid fa-chart-pie text-indigo-400 mr-2"></i>Distribuição de Despesas</span>
+                </h3>
+                <div class="h-48 relative">
+                    <canvas id="expensesChart"></canvas>
+                </div>
+            </div>
+
+            <!-- ÚLTIMOS LANÇAMENTOS -->
+            <div class="bg-gray-800 p-4 rounded-2xl border border-gray-700 shadow-md">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-sm font-semibold text-gray-300"><i class="fa-solid fa-history text-indigo-400 mr-2"></i>Últimas Atividades</h3>
+                    <button onclick="switchTab('tab-expenses')" class="text-xs text-indigo-400 hover:underline">Ver todas</button>
+                </div>
+                <div id="recent-expenses-list" class="space-y-2">
+                    <p class="text-xs text-gray-500 text-center py-4">Nenhum lançamento registrado.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. MAPA & POSTOS DE COMBUSTÍVEL -->
+        <section id="tab-map" class="tab-content hidden relative">
+            <div id="map"></div>
+
+            <!-- BARRA DE AÇÃO SOBREPOSTA NO MAPA -->
+            <div class="absolute top-3 left-3 right-3 z-[1000] space-y-2">
+                <div class="flex gap-2">
+                    <button onclick="locateUserOnMap()" class="bg-gray-900/90 hover:bg-gray-900 text-white px-3 py-2 rounded-xl text-xs font-semibold shadow-lg backdrop-blur flex items-center gap-2 border border-gray-700">
+                        <i class="fa-solid fa-crosshairs text-indigo-400"></i> Minha Posição
+                    </button>
+                    <button onclick="toggleModal('station-search-modal')" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-xl text-xs font-semibold shadow-lg flex items-center gap-2 border border-emerald-500 ml-auto">
+                        <i class="fa-solid fa-building-circle-check"></i> Postos ANP
+                    </button>
+                    <button onclick="openStationPriceModal()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded-xl text-xs font-semibold shadow-lg flex items-center gap-2 border border-indigo-500" aria-label="Cadastrar posto ou preço">
+                        <i class="fa-solid fa-plus"></i>
+                    </button>
+                </div>
+                <div id="map-status" class="bg-gray-900/90 text-gray-200 px-3 py-2 rounded-xl text-[11px] shadow-lg backdrop-blur border border-gray-700">
+                    <i class="fa-solid fa-location-dot text-indigo-400 mr-1"></i> Buscando sua localização…
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. LANÇAMENTOS & HISTÓRICO -->
+        <section id="tab-expenses" class="tab-content hidden p-4 space-y-4">
+            <div class="flex justify-between items-center">
+                <h2 class="text-lg font-bold text-white">Histórico de Despesas</h2>
+                <button onclick="openExpenseModal()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1 transition">
+                    <i class="fa-solid fa-plus"></i> Lançar
+                </button>
+            </div>
+
+            <!-- Filtros -->
+            <div class="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                <button onclick="filterExpenses('all')" data-category="all" class="filter-btn active bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg whitespace-nowrap">Todos</button>
+                <button onclick="filterExpenses('Abastecimento')" data-category="Abastecimento" class="filter-btn bg-gray-800 text-gray-300 border border-gray-700 text-xs px-3 py-1.5 rounded-lg whitespace-nowrap">Abastecimentos</button>
+                <button onclick="filterExpenses('Manutenção')" data-category="Manutenção" class="filter-btn bg-gray-800 text-gray-300 border border-gray-700 text-xs px-3 py-1.5 rounded-lg whitespace-nowrap">Manutenções</button>
+                <button onclick="filterExpenses('Documentação')" data-category="Documentação" class="filter-btn bg-gray-800 text-gray-300 border border-gray-700 text-xs px-3 py-1.5 rounded-lg whitespace-nowrap">Documentos</button>
+            </div>
+
+            <div class="bg-gray-800 p-3 rounded-2xl border border-gray-700">
+                <div class="flex items-center justify-between gap-2 mb-2">
+                    <span class="text-xs font-semibold text-gray-300"><i class="fa-solid fa-calendar-days text-indigo-400 mr-2"></i>Filtrar por período</span>
+                    <span id="expenses-period-label" class="text-[10px] text-indigo-300 text-right"></span>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <select id="expenses-year-filter" onchange="applyPeriodFilter('expenses')" aria-label="Selecionar ano das despesas" class="period-filter w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"></select>
+                    <select id="expenses-month-filter" onchange="applyPeriodFilter('expenses')" aria-label="Selecionar mês das despesas" class="period-filter w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"></select>
+                </div>
+            </div>
+
+            <!-- Lista de Despesas -->
+            <div id="full-expenses-list" class="space-y-2">
+                <!-- Render dinâmico -->
+            </div>
+        </section>
+
+        <!-- 4. MANUTENÇÃO PREVENTIVA -->
+        <section id="tab-maintenance" class="tab-content hidden p-4 space-y-4">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h2 class="text-lg font-bold text-white">Manutenção Preventiva</h2>
+                    <p class="text-xs text-gray-400">Controle de validade por KM ou Data</p>
+                </div>
+                <button onclick="openMaintenanceRuleModal()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1">
+                    <i class="fa-solid fa-plus"></i> Novo Item
+                </button>
+            </div>
+
+            <!-- CARDS DE REVISÃO -->
+            <div id="maintenance-rules-list" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <!-- Conteúdo Injetado via JS -->
+            </div>
+        </section>
+
+        <!-- 5. CHECKLIST & PENDÊNCIAS -->
+        <section id="tab-checklist" class="tab-content hidden p-4 space-y-4">
+            <div class="flex justify-between items-center">
+                <h2 class="text-lg font-bold text-white">Lista de Afazeres & Reparos</h2>
+                <button onclick="toggleModal('add-todo-modal')" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1">
+                    <i class="fa-solid fa-plus"></i> Adicionar
+                </button>
+            </div>
+
+            <div id="todo-list" class="space-y-2">
+                <!-- Conteúdo Injetado via JS -->
+            </div>
+        </section>
+
+        <!-- 6. ODÔMETRO & GPS TRAVEL TRACKING -->
+        <section id="tab-odometer" class="tab-content hidden p-4 space-y-4">
+            <div class="bg-gray-800 p-4 rounded-2xl border border-gray-700 text-center space-y-3">
+                <div class="w-16 h-16 bg-indigo-600/20 text-indigo-400 rounded-full flex items-center justify-center mx-auto text-2xl">
+                    <i class="fa-solid fa-gauge-high"></i>
+                </div>
+                <div>
+                    <h2 class="text-lg font-bold text-white">Gravador de Viagem GPS</h2>
+                    <p class="text-xs text-gray-400">Calcule a distância real percorrida e atualize o odômetro</p>
+                </div>
+
+                <div class="bg-gray-900 p-4 rounded-xl border border-gray-700 flex justify-around">
+                    <div>
+                        <span class="text-[10px] text-gray-400 uppercase block">Distância Percorrida</span>
+                        <span id="gps-live-distance" class="text-2xl font-bold font-mono text-indigo-400">0.00</span> <span class="text-xs text-gray-400">KM</span>
+                    </div>
+                    <div>
+                        <span class="text-[10px] text-gray-400 uppercase block">Tempo Decorrido</span>
+                        <span id="gps-live-timer" class="text-2xl font-bold font-mono text-emerald-400">00:00</span>
+                    </div>
+                </div>
+
+                <div class="flex gap-2 justify-center pt-2">
+                    <button id="btn-start-gps" onclick="startGpsTracking()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2">
+                        <i class="fa-solid fa-play"></i> Iniciar Viagem
+                    </button>
+                    <button id="btn-stop-gps" onclick="stopGpsTracking()" disabled class="bg-rose-600/50 text-white px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 cursor-not-allowed">
+                        <i class="fa-solid fa-square"></i> Finalizar
+                    </button>
+                </div>
+            </div>
+
+            <!-- HISTÓRICO DE VIAGENS -->
+            <div class="bg-gray-800 p-4 rounded-2xl border border-gray-700">
+                <div class="flex items-center justify-between gap-2 mb-3">
+                    <h3 class="text-sm font-semibold text-gray-300"><i class="fa-solid fa-route text-indigo-400 mr-2"></i>Histórico de Trajetos</h3>
+                    <span id="trips-period-label" class="text-[10px] text-indigo-300 text-right"></span>
+                </div>
+                <div class="grid grid-cols-2 gap-2 mb-3">
+                    <select id="trips-year-filter" onchange="applyPeriodFilter('trips')" aria-label="Selecionar ano dos trajetos" class="period-filter w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"></select>
+                    <select id="trips-month-filter" onchange="applyPeriodFilter('trips')" aria-label="Selecionar mês dos trajetos" class="period-filter w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"></select>
+                </div>
+                <div id="trips-history-list" class="space-y-2 text-xs text-gray-400">
+                    <p class="text-center py-2">Nenhum trajeto gravado ainda.</p>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- BARRA DE NAVEGAÇÃO INFERIOR (MOBILE BOTTOM NAV) -->
+    <nav class="fixed bottom-0 left-0 right-0 bg-gray-800/95 backdrop-blur-md border-t border-gray-700 flex justify-around py-2 px-1 z-40">
+        <button onclick="switchTab('tab-dashboard')" class="nav-btn active flex flex-col items-center text-indigo-400 w-1/6">
+            <i class="fa-solid fa-chart-line text-lg"></i>
+            <span class="text-[10px] mt-0.5">Inicio</span>
+        </button>
+        <button onclick="switchTab('tab-expenses')" class="nav-btn flex flex-col items-center text-gray-400 hover:text-white w-1/6">
+            <i class="fa-solid fa-receipt text-lg"></i>
+            <span class="text-[10px] mt-0.5">Gastos</span>
+        </button>
+        <button onclick="switchTab('tab-map')" class="nav-btn flex flex-col items-center text-gray-400 hover:text-white w-1/6">
+            <i class="fa-solid fa-map-location-dot text-lg"></i>
+            <span class="text-[10px] mt-0.5">Postos</span>
+        </button>
+        <button onclick="switchTab('tab-maintenance')" class="nav-btn flex flex-col items-center text-gray-400 hover:text-white w-1/6">
+            <i class="fa-solid fa-shield-halved text-lg"></i>
+            <span class="text-[10px] mt-0.5">Revisões</span>
+        </button>
+        <button onclick="switchTab('tab-checklist')" class="nav-btn flex flex-col items-center text-gray-400 hover:text-white w-1/6">
+            <i class="fa-solid fa-list-check text-lg"></i>
+            <span class="text-[10px] mt-0.5">Tarefas</span>
+        </button>
+        <button onclick="switchTab('tab-odometer')" class="nav-btn flex flex-col items-center text-gray-400 hover:text-white w-1/6">
+            <i class="fa-solid fa-location-arrow text-lg"></i>
+            <span class="text-[10px] mt-0.5">GPS</span>
+        </button>
+    </nav>
+
+    <!-- MODAIS E FORMULÁRIOS -->
+
+    <!-- MODAL 1: GARAGEM / CADASTRO DE VEÍCULO -->
+    <div id="vehicle-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-gray-800 rounded-2xl max-w-md w-full border border-gray-700 overflow-hidden shadow-2xl">
+            <div class="px-5 py-4 border-b border-gray-700 flex justify-between items-center">
+                <h3 class="font-bold text-white text-base">Dados do Veículo</h3>
+                <button onclick="toggleModal('vehicle-modal')" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form id="form-vehicle" onsubmit="saveVehicle(event)" class="p-5 space-y-3">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-300 mb-1">Nome / Modelo</label>
+                    <input type="text" id="v-model" required placeholder="Ex: Gol 1.6, Civic, Onix" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-300 mb-1">Marca</label>
+                        <input type="text" id="v-brand" required placeholder="Ex: VW, Honda" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-300 mb-1">Ano</label>
+                        <input type="number" id="v-year" required placeholder="2020" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-300 mb-1">Placa</label>
+                        <input type="text" id="v-plate" required placeholder="ABC-1D23" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white uppercase focus:outline-none focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-300 mb-1">Combustível</label>
+                        <select id="v-fuel" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                            <option value="Flex">Flex (Gas/Eta)</option>
+                            <option value="Gasolina">Gasolina</option>
+                            <option value="Etanol">Etanol</option>
+                            <option value="Diesel">Diesel</option>
+                            <option value="GNV">GNV</option>
+                            <option value="Elétrico">Elétrico</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-300 mb-1">Quilometragem Atual (KM)</label>
+                    <input type="number" id="v-km" required placeholder="85000" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                </div>
+                <div class="pt-3">
+                    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2.5 rounded-xl font-bold text-sm shadow-lg transition">Salvar Veículo</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL 2: LANÇAR DESPESA / ABASTECIMENTO -->
+    <div id="expense-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-gray-800 rounded-2xl max-w-md w-full border border-gray-700 overflow-hidden shadow-2xl">
+            <div class="px-5 py-4 border-b border-gray-700 flex justify-between items-center">
+                <h3 id="expense-modal-title" class="font-bold text-white text-base">Novo Lançamento</h3>
+                <button onclick="toggleModal('expense-modal')" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form id="form-expense" onsubmit="saveExpense(event)" class="p-5 space-y-3">
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-300 mb-1">Categoria</label>
+                        <select id="exp-category" onchange="toggleFuelFields()" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                            <option value="Abastecimento">Abastecimento</option>
+                            <option value="Manutenção">Manutenção / Oficina</option>
+                            <option value="Documentação">Documentação / IPVA</option>
+                            <option value="Lavagem">Lavagem / Estética</option>
+                            <option value="Seguro">Seguro / Proteção</option>
+                            <option value="Outros">Outros Gastos</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-300 mb-1">Data</label>
+                        <input type="date" id="exp-date" required class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-gray-300 mb-1">Descrição / Local</label>
+                    <input type="text" id="exp-desc" required placeholder="Ex: Posto Shell, Troca de pastilhas..." class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-300 mb-1">Valor Total (R$)</label>
+                        <input type="number" step="0.01" id="exp-amount" required placeholder="0.00" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-300 mb-1">Odômetro (KM)</label>
+                        <input type="number" id="exp-km" required placeholder="KM no momento" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                    </div>
+                </div>
+
+                <!-- CAMPOS EXCLUSIVOS DE ABASTECIMENTO -->
+                <div id="fuel-fields" class="grid grid-cols-2 gap-3 pt-2 border-t border-gray-700/50">
+                    <div>
+                        <label class="block text-xs font-semibold text-indigo-300 mb-1">Litros Colocados</label>
+                        <input type="number" step="0.01" id="exp-liters" placeholder="Ex: 42.5" class="w-full bg-gray-900 border border-indigo-900/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-indigo-300 mb-1">Tanque Cheio?</label>
+                        <select id="exp-full-tank" class="w-full bg-gray-900 border border-indigo-900/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                            <option value="sim">Sim (Tanque Cheio)</option>
+                            <option value="nao">Não (Parcial)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="pt-3">
+                    <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 rounded-xl font-bold text-sm shadow-lg transition">Registrar Despesa</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL 3: NOVO POSTO DE GASOLINA (MAPA) -->
+    <div id="add-station-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-gray-800 rounded-2xl max-w-md w-full border border-gray-700 overflow-hidden shadow-2xl">
+            <div class="px-5 py-4 border-b border-gray-700 flex justify-between items-center">
+                <h3 id="station-modal-title" class="font-bold text-white text-base">Cadastrar / Atualizar Preço</h3>
+                <button onclick="toggleModal('add-station-modal')" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form id="form-station" onsubmit="saveStation(event)" class="p-5 space-y-3">
+                <input type="hidden" id="st-id">
+                <input type="hidden" id="st-external-id">
+                <input type="hidden" id="st-lat">
+                <input type="hidden" id="st-lng">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-300 mb-1">Nome do Posto</label>
+                    <input type="text" id="st-name" required placeholder="Ex: Posto Ipiranga Centro" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-300 mb-1">Gasolina (R$)</label>
+                        <input type="number" step="0.001" id="st-gas" required placeholder="5.79" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-300 mb-1">Etanol (R$)</label>
+                        <input type="number" step="0.001" id="st-etanol" placeholder="3.89" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-300 mb-1">Data da consulta do preço</label>
+                    <input type="date" id="st-price-date" required class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                </div>
+                <p id="station-location-hint" class="text-[11px] text-gray-400 italic"><i class="fa-solid fa-circle-info mr-1"></i>Para cadastrar um novo posto, toque primeiro no ponto correto do mapa.</p>
+                <div class="pt-2">
+                    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2.5 rounded-xl font-bold text-sm shadow-lg">Salvar Preço no Mapa</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: CONSULTA OFICIAL DE POSTOS ANP -->
+    <div id="station-search-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-gray-800 rounded-2xl max-w-md w-full border border-gray-700 overflow-hidden shadow-2xl">
+            <div class="px-5 py-4 border-b border-gray-700 flex justify-between items-center">
+                <h3 class="font-bold text-white text-base">Consultar Postos Autorizados</h3>
+                <button onclick="toggleModal('station-search-modal')" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form id="form-station-search" onsubmit="searchAnpStations(event)" class="p-5 space-y-3">
+                <p class="text-xs text-gray-400">Busca a base cadastral oficial da ANP. Os preços exibidos no mapa continuam sendo a última atualização registrada no app.</p>
+                <div class="grid grid-cols-3 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-300 mb-1">UF</label>
+                        <input type="text" id="anp-uf" value="GO" maxlength="2" required class="w-full uppercase bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500">
+                    </div>
+                    <div class="col-span-2">
+                        <label class="block text-xs font-semibold text-gray-300 mb-1">Cidade</label>
+                        <input type="text" id="anp-city" value="Itumbiara" required class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500">
+                    </div>
+                </div>
+                <div class="pt-2">
+                    <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 rounded-xl font-bold text-sm shadow-lg">Buscar Postos Oficiais</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL 4: NOVO ITEM MANUTENÇÃO PREVENTIVA -->
+    <div id="add-maintenance-rule-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-gray-800 rounded-2xl max-w-md w-full border border-gray-700 overflow-hidden shadow-2xl">
+            <div class="px-5 py-4 border-b border-gray-700 flex justify-between items-center">
+                <h3 id="maintenance-modal-title" class="font-bold text-white text-base">Nova Preventiva</h3>
+                <button onclick="toggleModal('add-maintenance-rule-modal')" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form id="form-maint-rule" onsubmit="saveMaintenanceRule(event)" class="p-5 space-y-3">
+                <input type="hidden" id="mr-id">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-300 mb-1">Item de Revisão</label>
+                    <input type="text" id="mr-name" required placeholder="Ex: Correia Dentada, Troca de Óleo..." class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-300 mb-1">Intervalo em KM</label>
+                        <input type="number" id="mr-interval-km" min="1" required placeholder="Ex: 10000" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-300 mb-1">Última Troca (KM)</label>
+                        <input type="number" id="mr-last-km" required placeholder="Ex: 80000" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                    </div>
+                </div>
+                <div class="pt-2">
+                    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2.5 rounded-xl font-bold text-sm shadow-lg">Cadastrar Alerta</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL 5: ADICIONAR TAREFA / CHECKLIST -->
+    <div id="add-todo-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-gray-800 rounded-2xl max-w-md w-full border border-gray-700 overflow-hidden shadow-2xl">
+            <div class="px-5 py-4 border-b border-gray-700 flex justify-between items-center">
+                <h3 class="font-bold text-white text-base">Nova Pendência</h3>
+                <button onclick="toggleModal('add-todo-modal')" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form id="form-todo" onsubmit="saveTodo(event)" class="p-5 space-y-3">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-300 mb-1">O que precisa ser feito?</label>
+                    <input type="text" id="todo-text" required placeholder="Ex: Trocar palheta do limpador, Alinhar..." class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-300 mb-1">Prioridade</label>
+                    <select id="todo-priority" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                        <option value="Baixa">Baixa</option>
+                        <option value="Média">Média</option>
+                        <option value="Alta">Alta (Urgente)</option>
+                    </select>
+                </div>
+                <div class="pt-2">
+                    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2.5 rounded-xl font-bold text-sm shadow-lg">Adicionar à Lista</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
+    <!-- SCRIPT DA APLICAÇÃO (FIREBASE + LOCALSTORAGE FALLBACK + LÓGICA DO APP) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Configuração Firebase (Com fallback local se não houver credenciais ativas)
+        const firebaseConfig = typeof __firebase_config !== 'undefined' 
+            ? JSON.parse(__firebase_config) 
+            : { apiKey: "demo", authDomain: "demo.firebaseapp.com", projectId: "demo-app" };
+
+        let db = null;
+        let useFirebase = false;
+
+        try {
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            const auth = getAuth(app);
+            signInAnonymously(auth).catch(() => console.log('Operando via armazenamento local'));
+            useFirebase = true;
+        } catch(e) {
+            console.log('Modo LocalStorage ativado.');
+        }
+
+        // ESTADO GLOBAL DA APLICAÇÃO
+        window.appState = {
+            vehicle: JSON.parse(localStorage.getItem('autocontrol_vehicle')) || {
+                model: 'Gol 1.6 Trend',
+                brand: 'Volkswagen',
+                year: 2018,
+                plate: 'ABC-1234',
+                fuel: 'Flex',
+                km: 92400
+            },
+            expenses: JSON.parse(localStorage.getItem('autocontrol_expenses')) || [
+                { id: '1', date: '2026-11-01', category: 'Abastecimento', desc: 'Posto Shell', amount: 220.00, km: 92400, liters: 38, fullTank: 'sim' },
+                { id: '2', date: '2026-10-15', category: 'Manutenção', desc: 'Troca de Óleo e Filtro', amount: 280.00, km: 90000, liters: 0, fullTank: 'nao' }
+            ],
+            maintenanceRules: JSON.parse(localStorage.getItem('autocontrol_maint')) || [
+                { id: 'm1', name: 'Troca de Óleo & Filtro', intervalKm: 10000, lastKm: 90000 },
+                { id: 'm2', name: 'Correia Dentada', intervalKm: 50000, lastKm: 60000 },
+                { id: 'm3', name: 'Velas de Ignição', intervalKm: 30000, lastKm: 75000 }
+            ],
+            todos: JSON.parse(localStorage.getItem('autocontrol_todos')) || [
+                { id: 't1', text: 'Trocar palhetas do para-brisa', priority: 'Média', done: false }
+            ],
+            stations: JSON.parse(localStorage.getItem('autocontrol_stations')) || [],
+            trips: JSON.parse(localStorage.getItem('autocontrol_trips')) || []
+        };
+
+        // Remove apenas o marcador demonstrativo antigo de Uberlândia; postos reais do usuário são preservados.
+        if (appState.stations.length === 1 && appState.stations[0].id === 's1' && appState.stations[0].name === 'Posto Shell Central') {
+            appState.stations = [];
+            localStorage.setItem('autocontrol_stations', JSON.stringify(appState.stations));
+        }
+
+        // FILTROS DE PERÍODO COMPARTILHADOS ENTRE PAINEL, GASTOS E TRAJETOS
+        const monthNames = [
+            'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+            'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+        ];
+        const currentDate = new Date();
+        const periodFilter = {
+            year: String(currentDate.getFullYear()),
+            month: String(currentDate.getMonth() + 1).padStart(2, '0')
+        };
+        let activeExpenseCategory = 'all';
+
+        function getLocalDateISO(date = new Date()) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        function getISODate(value) {
+            if (typeof value !== 'string') return '';
+            if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+
+            // Compatibilidade com trajetos gravados antes deste filtro (dd/mm/aaaa).
+            const brDate = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+            return brDate ? `${brDate[3]}-${brDate[2]}-${brDate[1]}` : '';
+        }
+
+        function getTripDateISO(trip) {
+            return getISODate(trip.dateISO) || getISODate(trip.date);
+        }
+
+        function formatDateBR(isoDate) {
+            const date = getISODate(isoDate);
+            if (!date) return '';
+            const [year, month, day] = date.split('-');
+            return `${day}/${month}/${year}`;
+        }
+
+        function matchesPeriod(isoDate) {
+            const date = getISODate(isoDate);
+            if (!date) return false;
+            const [year, month] = date.split('-');
+            return (periodFilter.year === 'all' || year === periodFilter.year) &&
+                   (periodFilter.month === 'all' || month === periodFilter.month);
+        }
+
+        function getPeriodExpenses() {
+            return appState.expenses.filter(expense => matchesPeriod(expense.date));
+        }
+
+        function getPeriodTrips() {
+            return appState.trips.filter(trip => matchesPeriod(getTripDateISO(trip)));
+        }
+
+        function getAvailableYears() {
+            const years = new Set([String(currentDate.getFullYear())]);
+            appState.expenses.forEach(expense => {
+                const date = getISODate(expense.date);
+                if (date) years.add(date.slice(0, 4));
+            });
+            appState.trips.forEach(trip => {
+                const date = getTripDateISO(trip);
+                if (date) years.add(date.slice(0, 4));
+            });
+            return [...years].sort((a, b) => Number(b) - Number(a));
+        }
+
+        function getPeriodLabel() {
+            const yearLabel = periodFilter.year === 'all' ? 'todos os anos' : periodFilter.year;
+            if (periodFilter.month === 'all') {
+                return periodFilter.year === 'all' ? 'Todos os períodos' : `Todo o ano de ${yearLabel}`;
+            }
+            const monthLabel = monthNames[Number(periodFilter.month) - 1];
+            return periodFilter.year === 'all' ? `${monthLabel} · todos os anos` : `${monthLabel} de ${yearLabel}`;
+        }
+
+        function syncPeriodControls() {
+            const yearOptions = [
+                '<option value="all">Todos os anos</option>',
+                ...getAvailableYears().map(year => `<option value="${year}">${year}</option>`)
+            ].join('');
+            const monthOptions = [
+                '<option value="all">Todos os meses</option>',
+                ...monthNames.map((month, index) => `<option value="${String(index + 1).padStart(2, '0')}">${month}</option>`)
+            ].join('');
+
+            ['dashboard', 'expenses', 'trips'].forEach(section => {
+                const yearSelect = document.getElementById(`${section}-year-filter`);
+                const monthSelect = document.getElementById(`${section}-month-filter`);
+                if (!yearSelect || !monthSelect) return;
+                yearSelect.innerHTML = yearOptions;
+                monthSelect.innerHTML = monthOptions;
+                yearSelect.value = periodFilter.year;
+                monthSelect.value = periodFilter.month;
+
+                const label = document.getElementById(`${section}-period-label`);
+                if (label) label.innerText = getPeriodLabel();
+            });
+        }
+
+        window.applyPeriodFilter = function(section) {
+            const yearSelect = document.getElementById(`${section}-year-filter`);
+            const monthSelect = document.getElementById(`${section}-month-filter`);
+            if (!yearSelect || !monthSelect) return;
+
+            periodFilter.year = yearSelect.value;
+            periodFilter.month = monthSelect.value;
+            renderAll();
+        };
+
+        // SALVAR LOCALMENTE
+        window.saveState = function() {
+            localStorage.setItem('autocontrol_vehicle', JSON.stringify(appState.vehicle));
+            localStorage.setItem('autocontrol_expenses', JSON.stringify(appState.expenses));
+            localStorage.setItem('autocontrol_maint', JSON.stringify(appState.maintenanceRules));
+            localStorage.setItem('autocontrol_todos', JSON.stringify(appState.todos));
+            localStorage.setItem('autocontrol_stations', JSON.stringify(appState.stations));
+            localStorage.setItem('autocontrol_trips', JSON.stringify(appState.trips));
+            renderAll();
+        };
+
+        window.renderAll = function() {
+            syncPeriodControls();
+            renderVehicleHeader();
+            renderDashboard();
+            renderExpenses();
+            renderMaintenance();
+            renderTodos();
+            renderTrips();
+            updateChart();
+        };
+
+        // NAVEGAÇÃO DE ABAS
+        window.switchTab = function(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.getElementById(tabId).classList.remove('hidden');
+
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.remove('text-indigo-400');
+                btn.classList.add('text-gray-400');
+            });
+            event.currentTarget.classList.remove('text-gray-400');
+            event.currentTarget.classList.add('text-indigo-400');
+
+            if(tabId === 'tab-map') {
+                setTimeout(() => { map.invalidateSize(); }, 200);
+            }
+        };
+
+        // MODAIS CONTROL
+        window.toggleModal = function(id) {
+            const el = document.getElementById(id);
+            el.classList.toggle('hidden');
+        };
+
+        // 1. VEHICLE MANAGING
+        function renderVehicleHeader() {
+            const v = appState.vehicle;
+            document.getElementById('header-car-info').innerText = `${v.brand} ${v.model} • ${v.plate}`;
+            document.getElementById('dash-car-name').innerText = v.model;
+            document.getElementById('dash-car-detail').innerText = `${v.brand} (${v.year}) - ${v.fuel}`;
+            document.getElementById('dash-car-plate').innerText = v.plate;
+            document.getElementById('dash-car-km').innerText = Number(v.km).toLocaleString('pt-BR');
+        }
+
+        window.saveVehicle = function(e) {
+            e.preventDefault();
+            appState.vehicle = {
+                model: document.getElementById('v-model').value,
+                brand: document.getElementById('v-brand').value,
+                year: document.getElementById('v-year').value,
+                plate: document.getElementById('v-plate').value,
+                fuel: document.getElementById('v-fuel').value,
+                km: Number(document.getElementById('v-km').value)
+            };
+            saveState();
+            toggleModal('vehicle-modal');
+        };
+
+        // 2. EXPENSES & DASHBOARD
+        window.openExpenseModal = function(cat = 'Abastecimento') {
+            document.getElementById('exp-category').value = cat;
+            document.getElementById('exp-date').value = getLocalDateISO();
+            document.getElementById('exp-km').value = appState.vehicle.km;
+            toggleFuelFields();
+            toggleModal('expense-modal');
+        };
+
+        window.toggleFuelFields = function() {
+            const cat = document.getElementById('exp-category').value;
+            const fuelDiv = document.getElementById('fuel-fields');
+            if(cat === 'Abastecimento') {
+                fuelDiv.classList.remove('hidden');
+            } else {
+                fuelDiv.classList.add('hidden');
+            }
+        };
+
+        window.saveExpense = function(e) {
+            e.preventDefault();
+            const category = document.getElementById('exp-category').value;
+            const amount = parseFloat(document.getElementById('exp-amount').value);
+            const km = parseInt(document.getElementById('exp-km').value);
+
+            const newExp = {
+                id: Date.now().toString(),
+                category: category,
+                date: document.getElementById('exp-date').value,
+                desc: document.getElementById('exp-desc').value,
+                amount: amount,
+                km: km,
+                liters: category === 'Abastecimento' ? parseFloat(document.getElementById('exp-liters').value || 0) : 0,
+                fullTank: category === 'Abastecimento' ? document.getElementById('exp-full-tank').value : 'nao'
+            };
+
+            appState.expenses.unshift(newExp);
+
+            // Atualiza KM do veículo se for maior
+            if(km > appState.vehicle.km) {
+                appState.vehicle.km = km;
+            }
+
+            saveState();
+            toggleModal('expense-modal');
+            document.getElementById('form-expense').reset();
+        };
+
+        function getExpenseIcon(category) {
+            if (category === 'Abastecimento') return 'fa-gas-pump text-emerald-400';
+            if (category === 'Manutenção') return 'fa-wrench text-amber-400';
+            return 'fa-receipt text-indigo-400';
+        }
+
+        function sortByNewestDate(items, getDate) {
+            return [...items].sort((a, b) => getDate(b).localeCompare(getDate(a)));
+        }
+
+        function buildExpenseCard(item) {
+            const icon = getExpenseIcon(item.category);
+            const expenseDate = formatDateBR(item.date) || item.date;
+            const amount = Number(item.amount || 0).toLocaleString('pt-BR', {
+                style: 'currency',
+                currency: 'BRL'
+            });
+
+            return `
+                <div class="bg-gray-800 p-3 rounded-xl border border-gray-700 flex justify-between items-center">
+                    <div class="flex items-center space-x-3 min-w-0">
+                        <div class="bg-gray-900 p-2.5 rounded-lg border border-gray-700 shrink-0">
+                            <i class="fa-solid ${icon}"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <h4 class="text-xs font-bold text-white truncate">${item.desc}</h4>
+                            <p class="text-[10px] text-gray-400">${expenseDate} • ${item.km} KM ${item.liters ? `• ${item.liters}L` : ''}</p>
+                        </div>
+                    </div>
+                    <div class="text-right shrink-0 ml-3">
+                        <span class="text-xs font-bold text-white">${amount}</span>
+                        <button onclick="deleteExpense('${item.id}')" class="block text-[10px] text-rose-400 hover:underline mt-0.5 ml-auto"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function updateExpenseCategoryButtons() {
+            document.querySelectorAll('.filter-btn').forEach(button => {
+                const isActive = button.dataset.category === activeExpenseCategory;
+                button.classList.toggle('bg-indigo-600', isActive);
+                button.classList.toggle('text-white', isActive);
+                button.classList.toggle('bg-gray-800', !isActive);
+                button.classList.toggle('text-gray-300', !isActive);
+                button.classList.toggle('border', !isActive);
+                button.classList.toggle('border-gray-700', !isActive);
+            });
+        }
+
+        function renderExpenses() {
+            const list = document.getElementById('full-expenses-list');
+            const recList = document.getElementById('recent-expenses-list');
+            list.innerHTML = '';
+            recList.innerHTML = '';
+
+            const expensesInPeriod = sortByNewestDate(getPeriodExpenses(), item => getISODate(item.date));
+            const filtered = activeExpenseCategory === 'all'
+                ? expensesInPeriod
+                : expensesInPeriod.filter(item => item.category === activeExpenseCategory);
+
+            updateExpenseCategoryButtons();
+
+            if(filtered.length === 0) {
+                list.innerHTML = '<p class="text-xs text-gray-500 text-center py-4">Nenhum registro encontrado para o período e categoria selecionados.</p>';
+            } else {
+                filtered.forEach(item => {
+                    list.innerHTML += buildExpenseCard(item);
+                });
+            }
+
+            if(expensesInPeriod.length === 0) {
+                recList.innerHTML = '<p class="text-xs text-gray-500 text-center py-4">Nenhum lançamento no período selecionado.</p>';
+            } else {
+                expensesInPeriod.slice(0, 3).forEach(item => {
+                    recList.innerHTML += buildExpenseCard(item);
+                });
+            }
+        }
+
+        window.deleteExpense = function(id) {
+            appState.expenses = appState.expenses.filter(x => x.id !== id);
+            saveState();
+        };
+
+        window.filterExpenses = function(cat) {
+            activeExpenseCategory = cat;
+            renderExpenses();
+        };
+
+        function renderDashboard() {
+            const expensesInPeriod = getPeriodExpenses();
+            const periodTotal = expensesInPeriod
+                .reduce((acc, x) => acc + Number(x.amount || 0), 0);
+
+            document.getElementById('dash-month-cost').innerText = periodTotal.toLocaleString('pt-BR', {
+                style: 'currency',
+                currency: 'BRL'
+            });
+
+            // Calcula as métricas apenas com os lançamentos do período escolhido.
+            const fuelings = expensesInPeriod
+                .filter(x => x.category === 'Abastecimento' && x.liters > 0)
+                .sort((a, b) => a.km - b.km);
+            let averageConsumption = '0.0';
+            if(fuelings.length >= 2) {
+                const totalKm = fuelings[fuelings.length - 1].km - fuelings[0].km;
+                const totalLiters = fuelings.slice(1).reduce((acc, x) => acc + x.liters, 0);
+                averageConsumption = totalLiters > 0 ? (totalKm / totalLiters).toFixed(1) : '0.0';
+            }
+            document.getElementById('dash-avg-consumption').innerText = `${averageConsumption} km/L`;
+
+            const odometerReadings = expensesInPeriod.map(x => Number(x.km)).filter(Number.isFinite);
+            const drivenKm = odometerReadings.length >= 2
+                ? Math.max(...odometerReadings) - Math.min(...odometerReadings)
+                : 0;
+            const costPerKm = drivenKm > 0 ? periodTotal / drivenKm : 0;
+            document.getElementById('dash-cost-per-km').innerText = costPerKm.toLocaleString('pt-BR', {
+                style: 'currency',
+                currency: 'BRL'
+            });
+        }
+
+        // 3. MANUTENÇÃO PREVENTIVA
+        function renderMaintenance() {
+            const container = document.getElementById('maintenance-rules-list');
+            container.innerHTML = '';
+
+            if (appState.maintenanceRules.length === 0) {
+                container.innerHTML = '<p class="text-xs text-gray-500 text-center py-6 col-span-full">Nenhum item de revisão cadastrado.</p>';
+                return;
+            }
+
+            appState.maintenanceRules.forEach(rule => {
+                const currentKm = appState.vehicle.km;
+                const targetKm = rule.lastKm + rule.intervalKm;
+                const remainingKm = targetKm - currentKm;
+                const percentage = Math.max(0, Math.min(100, ((currentKm - rule.lastKm) / rule.intervalKm) * 100));
+
+                let statusColor = 'bg-emerald-500';
+                if(remainingKm < 1000) statusColor = 'bg-amber-500';
+                if(remainingKm <= 0) statusColor = 'bg-rose-500';
+
+                container.innerHTML += `
+                    <div class="bg-gray-800 p-4 rounded-2xl border border-gray-700 space-y-2">
+                        <div class="flex justify-between items-center">
+                            <h4 class="font-bold text-sm text-white">${escapeHtml(rule.name)}</h4>
+                            <span class="text-xs ${remainingKm <= 0 ? 'text-rose-400 font-bold' : 'text-gray-400'}">
+                                ${remainingKm <= 0 ? 'REVISAR AGORA!' : `Faltam ${remainingKm} KM`}
+                            </span>
+                        </div>
+                        <div class="w-full bg-gray-900 h-2 rounded-full overflow-hidden">
+                            <div class="${statusColor} h-full transition-all" style="width: ${percentage}%"></div>
+                        </div>
+                        <div class="flex justify-between text-[10px] text-gray-400">
+                            <span>Última: ${rule.lastKm} KM</span>
+                            <span>Próxima: ${targetKm} KM</span>
+                        </div>
+                        <div class="flex justify-end gap-3 pt-1 text-[11px]">
+                            <button onclick="openMaintenanceRuleModal('${rule.id}')" class="text-indigo-400 hover:text-indigo-300 font-semibold"><i class="fa-solid fa-pen-to-square mr-1"></i>Editar</button>
+                            <button onclick="deleteMaintenanceRule('${rule.id}')" class="text-rose-400 hover:text-rose-300 font-semibold"><i class="fa-solid fa-trash mr-1"></i>Apagar</button>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        window.openMaintenanceRuleModal = function(id = '') {
+            const form = document.getElementById('form-maint-rule');
+            const rule = id ? appState.maintenanceRules.find(item => item.id === id) : null;
+            form.reset();
+            document.getElementById('mr-id').value = rule?.id || '';
+            document.getElementById('mr-name').value = rule?.name || '';
+            document.getElementById('mr-interval-km').value = rule?.intervalKm || '';
+            document.getElementById('mr-last-km').value = rule?.lastKm ?? appState.vehicle.km;
+            document.getElementById('maintenance-modal-title').innerText = rule ? 'Editar Revisão Preventiva' : 'Nova Preventiva';
+            document.getElementById('add-maintenance-rule-modal').classList.remove('hidden');
+        };
+
+        window.saveMaintenanceRule = function(e) {
+            e.preventDefault();
+            const id = document.getElementById('mr-id').value;
+            const intervalKm = Number(document.getElementById('mr-interval-km').value);
+            const lastKm = Number(document.getElementById('mr-last-km').value);
+            const existingIndex = appState.maintenanceRules.findIndex(item => item.id === id);
+            const rule = {
+                id: existingIndex >= 0 ? id : Date.now().toString(),
+                name: document.getElementById('mr-name').value.trim(),
+                intervalKm,
+                lastKm
+            };
+
+            if (existingIndex >= 0) appState.maintenanceRules[existingIndex] = rule;
+            else appState.maintenanceRules.push(rule);
+
+            saveState();
+            document.getElementById('add-maintenance-rule-modal').classList.add('hidden');
+        };
+
+        window.deleteMaintenanceRule = function(id) {
+            const rule = appState.maintenanceRules.find(item => item.id === id);
+            if (!rule || !confirm(`Apagar a revisão “${rule.name}”?`)) return;
+            appState.maintenanceRules = appState.maintenanceRules.filter(item => item.id !== id);
+            saveState();
+        };
+
+        // 4. CHECKLIST & TAREFAS
+        function renderTodos() {
+            const container = document.getElementById('todo-list');
+            container.innerHTML = '';
+
+            appState.todos.forEach(todo => {
+                const badgeColor = todo.priority === 'Alta' ? 'bg-rose-500/20 text-rose-300' : 'bg-amber-500/20 text-amber-300';
+                container.innerHTML += `
+                    <div class="bg-gray-800 p-3 rounded-xl border border-gray-700 flex items-center justify-between">
+                        <div class="flex items-center space-x-3">
+                            <input type="checkbox" ${todo.done ? 'checked' : ''} onchange="toggleTodo('${todo.id}')" class="w-4 h-4 accent-indigo-600 rounded">
+                            <span class="text-xs text-white ${todo.done ? 'line-through text-gray-500' : ''}">${todo.text}</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-[10px] px-2 py-0.5 rounded ${badgeColor}">${todo.priority}</span>
+                            <button onclick="deleteTodo('${todo.id}')" class="text-gray-500 hover:text-rose-400 text-xs"><i class="fa-solid fa-trash"></i></button>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        window.saveTodo = function(e) {
+            e.preventDefault();
+            appState.todos.push({
+                id: Date.now().toString(),
+                text: document.getElementById('todo-text').value,
+                priority: document.getElementById('todo-priority').value,
+                done: false
+            });
+            saveState();
+            toggleModal('add-todo-modal');
+        };
+
+        window.toggleTodo = function(id) {
+            const item = appState.todos.find(x => x.id === id);
+            if(item) item.done = !item.done;
+            saveState();
+        };
+
+        window.deleteTodo = function(id) {
+            appState.todos = appState.todos.filter(x => x.id !== id);
+            saveState();
+        };
+
+        // 5. MAPA, GEOLOCALIZAÇÃO E POSTOS
+        // A posição inicial é somente uma referência visual enquanto o dispositivo pede a localização.
+        let map, userMarker, stationMarkersLayer;
+        let userPos = [-18.4190, -49.2150]; // Itumbiara/GO como fallback, nunca como localização do usuário.
+        let pendingStationPosition = null;
+        let anpStations = [];
+
+        // A API oficial da ANP não permite chamada direta por uma página estática (CORS).
+        // Configure esta variável antes deste script, ou no localStorage, com a URL do proxy incluído no projeto.
+        const anpProxyEndpoint = window.AUTOCONTROL_ANP_PROXY_URL || localStorage.getItem('autocontrol_anp_proxy_url') || '';
+
+        function setMapStatus(message, type = 'info') {
+            const status = document.getElementById('map-status');
+            if (!status) return;
+            const colors = {
+                info: 'text-gray-200 border-gray-700',
+                success: 'text-emerald-200 border-emerald-800',
+                warning: 'text-amber-200 border-amber-800',
+                error: 'text-rose-200 border-rose-800'
+            };
+            status.className = `bg-gray-900/90 px-3 py-2 rounded-xl text-[11px] shadow-lg backdrop-blur border ${colors[type] || colors.info}`;
+            status.innerHTML = message;
+        }
+
+        function escapeHtml(value = '') {
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function formatStationCurrency(value) {
+            if (value === null || value === undefined || value === '') return null;
+            const amount = Number(value);
+            return Number.isFinite(amount)
+                ? amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                : null;
+        }
+
+        function hasCoordinates(station) {
+            return Number.isFinite(Number(station?.lat)) && Number.isFinite(Number(station?.lng));
+        }
+
+        function getStationsForMap() {
+            const manuallyUpdatedOfficialStations = new Set(
+                appState.stations.map(station => station.externalId).filter(Boolean)
+            );
+            return [
+                ...appState.stations,
+                ...anpStations.filter(station => !manuallyUpdatedOfficialStations.has(station.externalId))
+            ].filter(hasCoordinates);
+        }
+
+        function getStationById(id) {
+            return getStationsForMap().find(station => station.id === id);
+        }
+
+        function stationPopup(station) {
+            const gasoline = formatStationCurrency(station.gas);
+            const ethanol = formatStationCurrency(station.etanol);
+            const isOfficial = station.source === 'anp';
+            const sourceLabel = isOfficial
+                ? 'Cadastro oficial da ANP'
+                : `Preço informado manualmente${station.priceUpdatedAt ? ` em ${formatDateBR(station.priceUpdatedAt)}` : ''}`;
+            const address = station.address ? `<span class="text-[10px] text-gray-600">${escapeHtml(station.address)}</span><br>` : '';
+            const brand = station.brand ? `<span class="text-[10px] text-gray-600">Bandeira: ${escapeHtml(station.brand)}</span><br>` : '';
+            const cnpj = station.cnpj ? `<span class="text-[10px] text-gray-600">CNPJ: ${escapeHtml(station.cnpj)}</span><br>` : '';
+            const prices = gasoline
+                ? `<span class="text-xs text-emerald-700">Gasolina: <b>${gasoline}</b></span><br>${ethanol ? `<span class="text-xs text-indigo-700">Etanol: <b>${ethanol}</b></span><br>` : ''}`
+                : '<span class="text-xs text-amber-700">Preço não informado. Atualize no local.</span><br>';
+
+            return `
+                <div class="text-gray-900 font-sans p-1 min-w-48">
+                    <b class="text-sm">${escapeHtml(station.name)}</b><br>
+                    ${address}${brand}${cnpj}${prices}
+                    <span class="text-[10px] ${isOfficial ? 'text-emerald-700' : 'text-indigo-700'}">${sourceLabel}</span><br>
+                    <button onclick="openStationPriceModal('${escapeHtml(station.id)}')" class="mt-2 text-[11px] font-bold text-indigo-700 hover:underline">${gasoline ? 'Atualizar preço' : 'Informar preço'}</button>
+                </div>
+            `;
+        }
+
+        function renderStationMarkers() {
+            if (!map || !stationMarkersLayer) return;
+            stationMarkersLayer.clearLayers();
+
+            getStationsForMap().forEach(station => {
+                const marker = L.marker([Number(station.lat), Number(station.lng)]).addTo(stationMarkersLayer);
+                marker.bindPopup(stationPopup(station));
+            });
+        }
+
+        function getLocationErrorMessage(error) {
+            if (error?.code === 1) return 'Localização não autorizada. Ative a permissão do navegador para centralizar o mapa onde você está.';
+            if (error?.code === 2) return 'Não foi possível determinar sua localização. Verifique GPS, Wi-Fi ou sinal de rede.';
+            if (error?.code === 3) return 'A localização demorou demais. Tente novamente em “Minha Posição”.';
+            return 'Não foi possível acessar a localização. O mapa permanece na cidade de referência.';
+        }
+
+        function updateUserPosition(position, zoom = 15) {
+            userPos = [position.coords.latitude, position.coords.longitude];
+            map.setView(userPos, zoom);
+            if (userMarker) map.removeLayer(userMarker);
+            userMarker = L.marker(userPos).addTo(map).bindPopup('<b>Você está aqui</b>');
+            setMapStatus('<i class="fa-solid fa-location-dot text-emerald-400 mr-1"></i> Localização do dispositivo atualizada.', 'success');
+        }
+
+        function requestUserLocation(zoom = 15) {
+            if (!navigator.geolocation) {
+                setMapStatus('<i class="fa-solid fa-triangle-exclamation mr-1"></i> Este navegador não oferece suporte à localização.', 'error');
+                return;
+            }
+
+            setMapStatus('<i class="fa-solid fa-spinner fa-spin text-indigo-400 mr-1"></i> Buscando a localização do dispositivo…');
+            navigator.geolocation.getCurrentPosition(
+                position => updateUserPosition(position, zoom),
+                error => setMapStatus(`<i class="fa-solid fa-triangle-exclamation mr-1"></i> ${getLocationErrorMessage(error)}`, 'warning'),
+                { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+            );
+        }
+
+        function initMap() {
+            map = L.map('map').setView(userPos, 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap'
+            }).addTo(map);
+            stationMarkersLayer = L.layerGroup().addTo(map);
+
+            map.on('click', event => {
+                pendingStationPosition = [event.latlng.lat, event.latlng.lng];
+                setMapStatus('<i class="fa-solid fa-map-pin text-indigo-400 mr-1"></i> Ponto selecionado. Toque em “+” para cadastrar ou atualizar o preço neste local.', 'info');
+            });
+
+            renderStationMarkers();
+            requestUserLocation(14);
+        }
+
+        window.locateUserOnMap = function() {
+            requestUserLocation(16);
+        };
+
+        function getAnpProxyRequestUrl(uf, city) {
+            if (!anpProxyEndpoint) return null;
+            const url = new URL(anpProxyEndpoint, window.location.origin);
+            url.searchParams.set('uf', uf);
+            url.searchParams.set('municipio', city);
+            return url.toString();
+        }
+
+        function normalizeAnpStation(station) {
+            const latitude = Number(String(station.latitude || '').replace(',', '.'));
+            const longitude = Number(String(station.longitude || '').replace(',', '.'));
+            const addressParts = [station.endereco, station.complemento, station.bairro, station.municipio, station.uf].filter(Boolean);
+
+            return {
+                id: `anp-${station.cnpj}`,
+                externalId: station.cnpj,
+                cnpj: station.cnpj,
+                name: station.razaoSocial || 'Posto sem nome informado',
+                address: addressParts.join(' · '),
+                brand: station.distribuidora,
+                lat: latitude,
+                lng: longitude,
+                gas: null,
+                etanol: null,
+                source: 'anp'
+            };
+        }
+
+        window.searchAnpStations = async function(event) {
+            event.preventDefault();
+            const uf = document.getElementById('anp-uf').value.trim().toUpperCase();
+            const city = document.getElementById('anp-city').value.trim();
+            const requestUrl = getAnpProxyRequestUrl(uf, city);
+
+            toggleModal('station-search-modal');
+            if (!requestUrl) {
+                setMapStatus('<i class="fa-solid fa-plug-circle-xmark mr-1"></i> Consulta ANP pronta, mas o conector de dados ainda não foi configurado. A API oficial bloqueia chamadas diretas de páginas estáticas.', 'warning');
+                return;
+            }
+
+            try {
+                setMapStatus('<i class="fa-solid fa-spinner fa-spin text-emerald-400 mr-1"></i> Consultando postos autorizados pela ANP…');
+                const response = await fetch(requestUrl);
+                if (!response.ok) throw new Error(`Consulta indisponível (${response.status})`);
+                const payload = await response.json();
+                const stations = Array.isArray(payload.data) ? payload.data : [];
+                anpStations = stations.map(normalizeAnpStation).filter(hasCoordinates);
+                renderStationMarkers();
+
+                if (anpStations.length > 0) {
+                    const bounds = L.latLngBounds(anpStations.map(station => [station.lat, station.lng]));
+                    map.fitBounds(bounds.pad(0.15));
+                }
+                setMapStatus(`<i class="fa-solid fa-circle-check text-emerald-400 mr-1"></i> ${anpStations.length} postos autorizados carregados para ${escapeHtml(city)}/${uf}. Informe ou atualize o preço no marcador.`, 'success');
+            } catch (error) {
+                console.error(error);
+                setMapStatus(`<i class="fa-solid fa-triangle-exclamation mr-1"></i> Não foi possível consultar os postos oficiais: ${escapeHtml(error.message)}.`, 'error');
+            }
+        };
+
+        window.openStationPriceModal = function(id = '') {
+            const form = document.getElementById('form-station');
+            const station = id ? getStationById(id) : null;
+            const selectedPosition = station && hasCoordinates(station)
+                ? [Number(station.lat), Number(station.lng)]
+                : (pendingStationPosition || userPos);
+
+            form.reset();
+            document.getElementById('st-id').value = station?.id || '';
+            document.getElementById('st-external-id').value = station?.externalId || '';
+            document.getElementById('st-lat').value = selectedPosition[0];
+            document.getElementById('st-lng').value = selectedPosition[1];
+            document.getElementById('st-name').value = station?.name || '';
+            document.getElementById('st-gas').value = formatStationCurrency(station?.gas) ? Number(station.gas) : '';
+            document.getElementById('st-etanol').value = formatStationCurrency(station?.etanol) ? Number(station.etanol) : '';
+            document.getElementById('st-price-date').value = station?.priceUpdatedAt || getLocalDateISO();
+            document.getElementById('station-modal-title').innerText = station ? `Atualizar preço: ${station.name}` : 'Cadastrar posto e preço';
+            document.getElementById('station-location-hint').innerHTML = station
+                ? '<i class="fa-solid fa-circle-info mr-1"></i>O preço será identificado como atualização manual, com a data que você informar.'
+                : (pendingStationPosition
+                    ? '<i class="fa-solid fa-location-dot text-indigo-400 mr-1"></i>O novo posto será salvo no ponto selecionado no mapa.'
+                    : '<i class="fa-solid fa-circle-info mr-1"></i>Sem ponto selecionado, o posto será salvo na sua localização atual. Para precisão, toque no local exato do mapa antes de salvar.');
+            document.getElementById('add-station-modal').classList.remove('hidden');
+        };
+
+        window.saveStation = function(e) {
+            e.preventDefault();
+            const formId = document.getElementById('st-id').value;
+            const externalId = document.getElementById('st-external-id').value;
+            const latitude = Number(document.getElementById('st-lat').value);
+            const longitude = Number(document.getElementById('st-lng').value);
+
+            if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+                setMapStatus('<i class="fa-solid fa-triangle-exclamation mr-1"></i> Escolha um ponto válido no mapa antes de salvar o posto.', 'warning');
+                return;
+            }
+
+            const existingIndex = appState.stations.findIndex(station =>
+                station.id === formId || (externalId && station.externalId === externalId)
+            );
+            const existing = existingIndex >= 0 ? appState.stations[existingIndex] : {};
+            const originalStation = getStationById(formId) || {};
+            const updatedStation = {
+                ...originalStation,
+                ...existing,
+                id: existing.id || Date.now().toString(),
+                externalId: externalId || existing.externalId || '',
+                name: document.getElementById('st-name').value.trim(),
+                gas: Number(document.getElementById('st-gas').value),
+                etanol: Number(document.getElementById('st-etanol').value || 0),
+                lat: latitude,
+                lng: longitude,
+                source: 'manual',
+                priceUpdatedAt: document.getElementById('st-price-date').value
+            };
+
+            if (existingIndex >= 0) appState.stations[existingIndex] = updatedStation;
+            else appState.stations.push(updatedStation);
+
+            pendingStationPosition = null;
+            saveState();
+            renderStationMarkers();
+            document.getElementById('add-station-modal').classList.add('hidden');
+            setMapStatus('<i class="fa-solid fa-circle-check text-emerald-400 mr-1"></i> Preço salvo com a data informada.', 'success');
+        };
+
+        // 6. GPS TRACKING DE VIAGENS
+        let watchId = null;
+        let totalDistance = 0;
+        let lastCoord = null;
+        let startTime = null;
+        let timerInterval = null;
+
+        window.startGpsTracking = function() {
+            if (!navigator.geolocation) {
+                alert("Navegador sem suporte a GPS");
+                return;
+            }
+            totalDistance = 0;
+            lastCoord = null;
+            startTime = Date.now();
+
+            document.getElementById('btn-start-gps').disabled = true;
+            document.getElementById('btn-stop-gps').disabled = false;
+            document.getElementById('btn-stop-gps').classList.remove('bg-rose-600/50', 'cursor-not-allowed');
+            document.getElementById('btn-stop-gps').classList.add('bg-rose-600');
+
+            timerInterval = setInterval(() => {
+                const seconds = Math.floor((Date.now() - startTime) / 1000);
+                const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+                const secs = (seconds % 60).toString().padStart(2, '0');
+                document.getElementById('gps-live-timer').innerText = `${mins}:${secs}`;
+            }, 1000);
+
+            watchId = navigator.geolocation.watchPosition(pos => {
+                const current = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                if (lastCoord) {
+                    const dist = calculateDistance(lastCoord.lat, lastCoord.lng, current.lat, current.lng);
+                    totalDistance += dist;
+                    document.getElementById('gps-live-distance').innerText = totalDistance.toFixed(2);
+                }
+                lastCoord = current;
+            }, err => console.log(err), { enableHighAccuracy: true });
+        };
+
+        window.stopGpsTracking = function() {
+            if (watchId) navigator.geolocation.clearWatch(watchId);
+            clearInterval(timerInterval);
+
+            document.getElementById('btn-start-gps').disabled = false;
+            document.getElementById('btn-stop-gps').disabled = true;
+            document.getElementById('btn-stop-gps').classList.add('bg-rose-600/50', 'cursor-not-allowed');
+
+            if(totalDistance > 0) {
+                const newKm = Math.round(appState.vehicle.km + totalDistance);
+                appState.vehicle.km = newKm;
+                const tripDate = getLocalDateISO();
+                appState.trips.unshift({
+                    date: formatDateBR(tripDate),
+                    dateISO: tripDate,
+                    km: totalDistance.toFixed(2),
+                    duration: document.getElementById('gps-live-timer').innerText
+                });
+                saveState();
+            }
+        };
+
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+
+        function renderTrips() {
+            const list = document.getElementById('trips-history-list');
+            list.innerHTML = '';
+            const tripsInPeriod = sortByNewestDate(getPeriodTrips(), trip => getTripDateISO(trip));
+
+            if (tripsInPeriod.length === 0) {
+                list.innerHTML = '<p class="text-center py-2">Nenhum trajeto no período selecionado.</p>';
+                return;
+            }
+
+            tripsInPeriod.forEach(t => {
+                const tripDate = formatDateBR(getTripDateISO(t)) || t.date;
+                list.innerHTML += `
+                    <div class="bg-gray-900 p-2.5 rounded-xl flex justify-between">
+                        <span><i class="fa-solid fa-location-dot text-indigo-400 mr-2"></i>${tripDate}</span>
+                        <span><b>${t.km} KM</b> (${t.duration})</span>
+                    </div>
+                `;
+            });
+        }
+
+        // 7. CHART.JS GRAPH
+        let chartInstance = null;
+        function updateChart() {
+            const ctx = document.getElementById('expensesChart').getContext('2d');
+            const categories = ['Abastecimento', 'Manutenção', 'Documentação', 'Lavagem', 'Seguro', 'Outros'];
+            const totals = categories.map(cat => 
+                getPeriodExpenses().filter(x => x.category === cat).reduce((acc, x) => acc + Number(x.amount || 0), 0)
+            );
+
+            if (chartInstance) chartInstance.destroy();
+
+            chartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: categories,
+                    datasets: [{
+                        data: totals,
+                        backgroundColor: ['#10b981', '#f59e0b', '#6366f1', '#06b6d4', '#a855f7', '#6b7280'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { color: '#9ca3af', font: { size: 10 } } }
+                    }
+                }
+            });
+        }
+
+        // INICIALIZAÇÃO
+        window.onload = function() {
+            initMap();
+            renderAll();
+        };
+    </script>
+</body>
+</html>
